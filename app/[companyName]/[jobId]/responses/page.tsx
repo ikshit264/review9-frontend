@@ -27,35 +27,15 @@ export default function JobResponses() {
   const companyName = params.companyName as string;
   const { user } = useStore();
   const toast = useToast();
-  const { useJobQuery } = useJobApi(jobId);
+  const { useJobQuery, useJobCandidatesQuery } = useJobApi(jobId);
   const { data: backendJob, isLoading: jobLoading } = useJobQuery();
+  const { data: fetchedCandidates = [], isLoading: candidatesLoading, refetch: refetchCandidates } = useJobCandidatesQuery();
 
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [candidatesLoading, setCandidatesLoading] = useState(true);
+  const candidates = fetchedCandidates as Candidate[];
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<any>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
-
-  // Fetch candidates from backend
-  React.useEffect(() => {
-    if (jobId) {
-      setCandidatesLoading(true);
-      console.log('Fetching candidates for jobId:', jobId);
-      jobsApi.getCandidates(jobId)
-        .then(data => {
-          console.log('Candidates data received:', data);
-          // Ensure data is always an array
-          setCandidates(Array.isArray(data) ? data as any : []);
-          setCandidatesLoading(false);
-        })
-        .catch((err) => {
-          console.error('Error fetching candidates:', err);
-          setCandidates([]);
-          setCandidatesLoading(false);
-        });
-    }
-  }, [jobId]);
 
   const fetchSession = async (sessionId: string) => {
     setSessionLoading(true);
@@ -96,9 +76,7 @@ export default function JobResponses() {
     setUpdating(candidateId);
     try {
       await jobsApi.updateCandidateStatus(candidateId, newStatus);
-      setCandidates(prev =>
-        prev.map(c => c.id === candidateId ? { ...c, status: newStatus } : c)
-      );
+      refetchCandidates();
       if (selectedCandidate?.id === candidateId) {
         setSelectedCandidate(prev => prev ? { ...prev, status: newStatus } : null);
       }
@@ -119,8 +97,7 @@ export default function JobResponses() {
       toast.success('Candidate scheduled for re-interview. An email has been sent.');
       setReInterviewConfirm(null);
       // Refresh candidates
-      const data = await jobsApi.getCandidates(jobId);
-      setCandidates(data as any);
+      refetchCandidates();
     } catch (err) {
       toast.error('Failed to schedule re-interview');
     }
@@ -132,9 +109,7 @@ export default function JobResponses() {
       await interviewsApi.resumeInterview(sessionId);
       toast.success('Interview resumed successfully!');
       // Refresh local state
-      setCandidates(prev =>
-        prev.map(c => c.sessionId === sessionId ? { ...c, status: 'ONGOING' } : c)
-      );
+      refetchCandidates();
     } catch (error) {
       console.error('Failed to resume interview:', error);
       toast.error('Failed to resume interview.');

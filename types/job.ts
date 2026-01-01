@@ -32,4 +32,6 @@ export interface JobPosting {
     timezone: string;
     createdAt?: string;
     candidates?: Candidate[];
+    candidateCount?: number;
+    sessionCount?: number;
 }

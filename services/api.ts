@@ -347,6 +347,13 @@ export const billingApi = {
             body: JSON.stringify({ plan }),
         });
     },
+
+    subscribe: async (plan: SubscriptionPlan) => {
+        return apiRequest<{ success: boolean, message: string, user: User }>('/billing/subscribe', {
+            method: 'POST',
+            body: JSON.stringify({ plan }),
+        });
+    },
 };
 
 // Upload API

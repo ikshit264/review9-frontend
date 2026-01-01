@@ -14,8 +14,9 @@ export default function CompanyInterviewDetail() {
   const companyName = params.companyName as string;
   const router = useRouter();
   const { user } = useStore();
-  const { useJobQuery, inviteCandidatesMutation } = useJobApi(jobId);
-  const { data: backendJob, isLoading } = useJobQuery();
+  const { useJobQuery, useJobCandidatesQuery, inviteCandidatesMutation } = useJobApi(jobId);
+  const { data: backendJob, isLoading: jobLoading } = useJobQuery();
+  const { data: candidates = [], isLoading: candidatesLoading } = useJobCandidatesQuery();
 
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [candidateEmails, setCandidateEmails] = useState('');
@@ -42,6 +43,12 @@ export default function CompanyInterviewDetail() {
     noTextTyping: false,
     timezone: 'UTC',
     candidates: []
+  };
+
+  // Combine job metadata with fetched candidates
+  const jobWithCandidates = {
+    ...job,
+    candidates: candidates || []
   };
 
   const getStatusColor = (status: string) => {
@@ -101,8 +108,10 @@ export default function CompanyInterviewDetail() {
   };
 
   // Calculate stats
-  const completedCount = job.candidates?.filter(c => c.status === 'COMPLETED').length || 0;
-  const avgScore = (job.candidates?.filter(c => c.score)?.reduce((acc, c) => acc + (c.score || 0), 0) || 0) / (completedCount || 1);
+  const completedCount = jobWithCandidates.candidates?.filter(c => c.status === 'COMPLETED').length || 0;
+  const avgScore = (jobWithCandidates.candidates?.filter(c => c.score)?.reduce((acc, c) => acc + (c.score || 0), 0) || 0) / (completedCount || 1);
+
+  const isLoading = jobLoading || candidatesLoading;
 
   if (!user) {
     router.push('/login');
@@ -134,7 +143,7 @@ export default function CompanyInterviewDetail() {
             <div className="flex space-x-6 border-t border-gray-50 pt-8">
               <div className="flex-1">
                 <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Candidates</div>
-                <div className="text-3xl font-black text-gray-900">{job.candidates?.length || 0}</div>
+                <div className="text-3xl font-black text-gray-900">{jobWithCandidates.candidates?.length || 0}</div>
               </div>
               <div className="flex-1">
                 <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Completed</div>
@@ -152,7 +161,7 @@ export default function CompanyInterviewDetail() {
               <h3 className="text-lg font-black text-gray-900">Candidates</h3>
               <Button variant="ghost" className="text-blue-600 font-bold text-sm" onClick={() => router.push(`/${companyName || job.companyName}/${jobId}/responses`)}>View All Responses &rarr;</Button>
             </div>
-            {(job.candidates?.length || 0) === 0 ? (
+            {(jobWithCandidates.candidates?.length || 0) === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <p className="font-bold">No candidates yet</p>
                 <p className="text-sm mt-2">Click "Invite Candidate" to add candidates to this job</p>
@@ -168,7 +177,7 @@ export default function CompanyInterviewDetail() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {job.candidates?.map(candidate => (
+                  {jobWithCandidates.candidates?.map(candidate => (
                     <tr key={candidate.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-8 py-5">
                         <div className="font-bold text-gray-900">{candidate.name}</div>
