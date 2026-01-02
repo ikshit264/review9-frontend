@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { useAuth } from '@/hooks/api/useAuth';
 import { UserRole, SubscriptionPlan } from '@/types';
@@ -11,29 +11,53 @@ import { NotificationDropdown } from '@/components/dashboard/NotificationDropdow
 import { useDashboardPageApi } from '@/hooks/api/useDashboardPageApi';
 import { useToast } from '@/hooks/useToast';
 import { Sidebar } from '@/components/dashboard/Sidebar';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
+import { cn } from '@/lib/utils';
 
 import {
   Briefcase,
   Plus,
-  Search,
   User as UserIcon,
   Monitor,
   Calendar,
   ChevronRight,
   BrainCircuit,
-  TrendingUp
+  TrendingUp,
+  Copy,
+  Check,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  FileSearch
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useStore();
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('companyId') || searchParams.get('companyid') || undefined;
+
   const { logout } = useAuth();
   const router = useRouter();
   const toast = useToast();
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
-  const { createJobMutation, useJobsQuery } = useDashboardPageApi();
+  const { createJobMutation, useJobsQuery } = useDashboardPageApi(companyId);
   const { data: jobs = [], isLoading: jobsLoading } = useJobsQuery();
   const [invitations, setInvitations] = useState<any[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
+
+  const [targetCompany, setTargetCompany] = useState<any>(null);
+
+  useEffect(() => {
+    if (user?.role === 'ADMIN' && companyId) {
+      import('@/services/api').then(({ authApi }) => {
+        authApi.getProfile(companyId).then(setTargetCompany).catch(console.error);
+      });
+    }
+  }, [user, companyId]);
+
+  const displayName = targetCompany?.name || user?.name || 'User';
+  const displayRole = targetCompany?.role || user?.role || 'User';
+  const displayId = targetCompany?.id || user?.id || '';
 
   // Polling state for invitations
   const [isInviting, setIsInviting] = useState(false);
@@ -44,6 +68,9 @@ export default function Dashboard() {
     failed: number;
     details: any[];
   }>({ total: 0, current: 0, succeeded: 0, failed: 0, details: [] });
+
+  // Job creation state (must be declared before any early returns)
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
 
   useEffect(() => {
     if (user?.role === UserRole.CANDIDATE) {
@@ -62,17 +89,67 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!user && typeof window !== 'undefined') {
-      router.push('/login');
+  // Helper for status badges
+  const renderStatusBadge = (status: string, startTime?: string, endTime?: string, isReInterviewed?: boolean) => {
+    const now = new Date();
+    const start = startTime ? new Date(startTime) : null;
+    let end = endTime ? new Date(endTime) : null;
+
+    // Rule: if requested for re-interview, extend by 2 hours
+    if (isReInterviewed && end) {
+      end = new Date(end.getTime() + 2 * 60 * 60 * 1000);
     }
-  }, [user, router]);
+
+    if (status === 'COMPLETED') {
+      return (
+        <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+          <span className="text-[9px] font-black text-emerald-600 uppercase tracking-[0.2em]">Completed</span>
+        </div>
+      );
+    }
+
+    if (status === 'REVIEW') {
+      return (
+        <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 rounded-full border border-blue-100">
+          <FileSearch className="w-3 h-3 text-blue-500" />
+          <span className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em]">Under Review</span>
+        </div>
+      );
+    }
+
+    if (status === 'EXPIRED' || (end && now > end)) {
+      return (
+        <div className="flex items-center space-x-2 px-3 py-1 bg-red-50 rounded-full border border-red-100">
+          <AlertCircle className="w-3 h-3 text-red-500" />
+          <span className="text-[9px] font-black text-red-600 uppercase tracking-[0.2em]">Expired</span>
+        </div>
+      );
+    }
+
+    if (start && now < start) {
+      return (
+        <div className="flex items-center space-x-2 px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
+          <Clock className="w-3 h-3 text-amber-500" />
+          <span className="text-[9px] font-black text-amber-600 uppercase tracking-[0.2em]">Starts Soon</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center space-x-2 px-3 py-1 bg-indigo-50 rounded-full border border-indigo-100">
+        <Clock className="w-3 h-3 text-indigo-500 animate-pulse" />
+        <span className="text-[9px] font-black text-indigo-600 uppercase tracking-[0.2em]">Live Session</span>
+      </div>
+    );
+  };
 
   if (!user) return null;
 
   const isLoading = jobsLoading || invitesLoading;
 
   const handleCreateJob = async (data: any) => {
+    setIsCreatingJob(true);
     try {
       const newJob = await createJobMutation.mutateAsync({
         ...data,
@@ -98,6 +175,8 @@ export default function Dashboard() {
     } catch (err) {
       toast.error("Failed to post job.");
       setIsInviting(false);
+    } finally {
+      setIsCreatingJob(false);
     }
   };
 
@@ -108,8 +187,14 @@ export default function Dashboard() {
     { label: 'AI Match Rate', value: '89%', icon: BrainCircuit, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
+  const isProcessing = isCreatingJob || isInviting;
+
   return (
     <div className="min-h-screen bg-[#FDFDFE] text-slate-900 selection:bg-blue-100">
+      <LoadingOverlay
+        isLoading={isProcessing}
+        message={isCreatingJob ? 'Creating job...' : isInviting ? 'Sending invitations...' : 'Processing...'}
+      />
       <div className="flex relative z-10">
         <Sidebar />
         {/* Main Content */}
@@ -118,12 +203,15 @@ export default function Dashboard() {
           <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
             <div className="space-y-1">
               <div className="flex items-center space-x-3">
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[9px] font-black uppercase tracking-widest">{user.role}</span>
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[9px] font-black uppercase tracking-widest">{displayRole}</span>
                 <div className="w-1 h-1 bg-gray-200 rounded-full"></div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Workspace ID: {user.id?.slice(0, 8)}</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Workspace ID: {displayId?.slice(0, 8)}</span>
+                {user?.role === 'ADMIN' && companyId && (
+                  <span className="ml-4 px-2 py-0.5 bg-amber-100 text-amber-600 rounded text-[9px] font-black uppercase tracking-widest">Admin Viewing</span>
+                )}
               </div>
               <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-slate-900">
-                Welcome back, {user.name.split(' ')[0]}
+                Welcome back, {displayName.split(' ')[0]}
                 <span className="text-blue-600">.</span>
               </h1>
             </div>
@@ -131,7 +219,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-4">
               <NotificationDropdown />
               <div className="h-10 w-[1px] bg-gray-100 mx-2"></div>
-              {user.role === UserRole.COMPANY ? (
+              {(user.role === UserRole.COMPANY || user.role === 'ADMIN') ? (
                 <button
                   onClick={() => setIsJobModalOpen(true)}
                   className="group flex items-center space-x-3 bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-slate-200 transition-all hover:-translate-y-0.5 active:translate-y-0"
@@ -142,11 +230,11 @@ export default function Dashboard() {
               ) : (
                 <div className="flex items-center space-x-4">
                   <div className="text-right">
-                    <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{user.name}</p>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Candidate</p>
+                    <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{displayName}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{displayRole}</p>
                   </div>
                   <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 font-black shadow-inner">
-                    {user.name[0]}
+                    {displayName[0]}
                   </div>
                 </div>
               )}
@@ -155,7 +243,7 @@ export default function Dashboard() {
 
           {/* Content Grid */}
           <div className="space-y-12">
-            {user.role === UserRole.COMPANY && (
+            {(user.role === UserRole.COMPANY || user.role === 'ADMIN') && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {dashboardStats.map((stat, i) => (
                   <div key={i} className="p-8 rounded-[2.5rem] bg-white border border-gray-100 shadow-sm transition-all hover:shadow-md hover:border-blue-100 group">
@@ -179,7 +267,7 @@ export default function Dashboard() {
                     <div key={n} className="h-72 rounded-[2.5rem] bg-gray-50/50 animate-pulse border border-gray-100"></div>
                   ))}
                 </div>
-              ) : user.role === UserRole.COMPANY ? (
+              ) : (user.role === UserRole.COMPANY || user.role === 'ADMIN') ? (
                 jobs.length === 0 ? (
                   <div className="relative p-24 rounded-[3rem] border-2 border-dashed border-gray-100 bg-gray-50/30 flex flex-col items-center justify-center text-center overflow-hidden">
                     <div className="w-20 h-20 bg-white rounded-[2rem] shadow-xl flex items-center justify-center mb-8 border border-gray-50">
@@ -215,8 +303,17 @@ export default function Dashboard() {
                       {invitations.map(inv => (
                         <div
                           key={inv.id}
-                          className="group relative p-8 rounded-[2.5rem] bg-white border border-gray-100 hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/5 transition-all cursor-pointer backdrop-blur-xl"
-                          onClick={() => router.push(`/interview/${inv.interviewLink}`)}
+                          className={cn(
+                            "group relative p-8 rounded-[2.5rem] bg-white border border-gray-100 transition-all backdrop-blur-xl",
+                            ['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status)
+                              ? "bg-gray-50/80 opacity-70 cursor-not-allowed grayscale-[0.8]"
+                              : "bg-white hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/5 cursor-pointer shadow-sm"
+                          )}
+                          onClick={() => {
+                            if (!['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status)) {
+                              router.push(`/interview/${inv.interviewLink}`);
+                            }
+                          }}
                         >
                           <div className="flex justify-between items-start mb-6">
                             <div className={`p-4 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500`}>
@@ -224,10 +321,7 @@ export default function Dashboard() {
                             </div>
                             <div className="flex flex-col items-end">
                               <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-1.5">{inv.job.company.name}</span>
-                              <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-[0.2em]">Live Session</span>
-                              </div>
+                              {renderStatusBadge(inv.status, inv.job.interviewStartTime || inv.job.scheduledTime, inv.job.interviewEndTime, inv.isReInterviewed)}
                             </div>
                           </div>
                           <h3 className="text-2xl font-black text-slate-900 mb-2 uppercase group-hover:text-indigo-600 transition-colors tracking-tight leading-none">{inv.job.title}</h3>
@@ -236,12 +330,33 @@ export default function Dashboard() {
                           <div className="pt-6 border-t border-gray-50 flex items-center justify-between">
                             <div className="flex items-center space-x-2.5 text-gray-400">
                               <Calendar className="w-4 h-4" />
-                              <span className="text-[11px] font-bold text-slate-600">{new Date(inv.job.scheduledTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span className="text-[11px] font-bold text-slate-600">{new Date(inv.job.interviewStartTime || inv.job.scheduledTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             </div>
-                            <button className="flex items-center space-x-2 text-[11px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-900 transition-all">
-                              <span>Enter Session</span>
-                              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                            </button>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = `${window.location.origin}/interview/${inv.interviewLink}`;
+                                  navigator.clipboard.writeText(url);
+                                  toast.success("Interview link copied!");
+                                }}
+                                className="p-2 rounded-xl bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-all flex items-center space-x-1"
+                                title="Copy Interview Link"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Link</span>
+                              </button>
+                              <button
+                                disabled={['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status)}
+                                className={cn(
+                                  "flex items-center space-x-2 text-[11px] font-black uppercase tracking-widest transition-all",
+                                  ['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status) ? "text-gray-300" : "text-slate-400 group-hover:text-slate-900"
+                                )}
+                              >
+                                <span>{['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status) ? 'Done' : 'Enter'}</span>
+                                <ChevronRight className={cn("w-5 h-5 transition-transform", !['COMPLETED', 'REVIEW', 'REJECTED', 'CONSIDERED', 'SHORTLISTED', 'EXPIRED'].includes(inv.status) && "group-hover:translate-x-1")} />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}

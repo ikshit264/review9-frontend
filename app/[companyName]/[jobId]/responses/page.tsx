@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { JobDetailLayout } from '@/components/JobDetailLayout';
 import { Card, Button, Table, CandidateStatusBadge, ScoreIndicator, FitIndicator, Dropdown, Skeleton, Modal } from '@/components/UI';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { SubscriptionPlan } from '@/types';
 import { useJobApi } from '@/hooks/api/useJobApi';
 import { jobsApi } from '@/services/api';
@@ -23,11 +24,13 @@ interface Candidate extends GlobalCandidate {
 
 export default function JobResponses() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('companyId') || searchParams.get('companyid') || undefined;
   const jobId = params.jobId as string;
   const companyName = params.companyName as string;
   const { user } = useStore();
   const toast = useToast();
-  const { useJobQuery, useJobCandidatesQuery } = useJobApi(jobId);
+  const { useJobQuery, useJobCandidatesQuery } = useJobApi(jobId, companyId);
   const { data: backendJob, isLoading: jobLoading } = useJobQuery();
   const { data: fetchedCandidates = [], isLoading: candidatesLoading, refetch: refetchCandidates } = useJobCandidatesQuery();
 
@@ -36,12 +39,13 @@ export default function JobResponses() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<any>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const fetchSession = async (sessionId: string) => {
     setSessionLoading(true);
     try {
       const { interviewsApi } = await import('@/services/api');
-      const data = await interviewsApi.getSessionReport(sessionId);
+      const data = await interviewsApi.getSessionReport(sessionId, companyId);
       setSessionData(data);
     } catch (err) {
       console.error("Failed to fetch session:", err);
@@ -63,7 +67,6 @@ export default function JobResponses() {
     tabTracking: true,
     eyeTracking: false,
     multiFaceDetection: false,
-    screenRecording: false,
     fullScreenMode: false,
     videoRequired: false,
     micRequired: false,
@@ -75,7 +78,7 @@ export default function JobResponses() {
   const handleStatusChange = async (candidateId: string, newStatus: Candidate['status']) => {
     setUpdating(candidateId);
     try {
-      await jobsApi.updateCandidateStatus(candidateId, newStatus);
+      await jobsApi.updateCandidateStatus(candidateId, newStatus, companyId);
       refetchCandidates();
       if (selectedCandidate?.id === candidateId) {
         setSelectedCandidate(prev => prev ? { ...prev, status: newStatus } : null);
@@ -92,21 +95,24 @@ export default function JobResponses() {
   const [reInterviewConfirm, setReInterviewConfirm] = useState<string | null>(null);
 
   const handleReInterview = async (candidateId: string) => {
+    setSendingEmail(true);
     try {
-      await jobsApi.reInterviewCandidate(jobId, candidateId);
+      await jobsApi.reInterviewCandidate(jobId, candidateId, companyId);
       toast.success('Candidate scheduled for re-interview. An email has been sent.');
       setReInterviewConfirm(null);
       // Refresh candidates
       refetchCandidates();
     } catch (err) {
       toast.error('Failed to schedule re-interview');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
   const handleResume = async (sessionId: string) => {
     try {
       const { interviewsApi } = await import('@/services/api');
-      await interviewsApi.resumeInterview(sessionId);
+      await interviewsApi.resumeInterview(sessionId, companyId);
       toast.success('Interview resumed successfully!');
       // Refresh local state
       refetchCandidates();
@@ -152,12 +158,15 @@ export default function JobResponses() {
       actions.push({
         label: '↺ Resend Invite',
         onClick: async () => {
+          setSendingEmail(true);
           try {
-            await jobsApi.resendInvite(jobId, { name: candidate.name, email: candidate.email });
+            await jobsApi.resendInvite(jobId, { name: candidate.name, email: candidate.email }, companyId);
             toast.success(`Invite resent to ${candidate.email}`);
           } catch (err) {
             console.error("Failed to resend invite:", err);
             toast.error("Failed to resend invite. Please try again.");
+          } finally {
+            setSendingEmail(false);
           }
         }
       });
@@ -178,6 +187,7 @@ export default function JobResponses() {
 
   return (
     <JobDetailLayout jobTitle={job.title || 'Job Details'} companyName={companyName || job.companyName || 'Company'}>
+      <LoadingOverlay isLoading={sendingEmail} message="Sending email invitation..." />
       {/* Stats Summary */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
         {[

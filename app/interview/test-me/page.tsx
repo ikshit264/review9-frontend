@@ -19,7 +19,9 @@ export default function TestMePage() {
         setSelectedPlan(plan);
         try {
             const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-            const response = await fetch(`${API_BASE_URL}/interviews/test-me?plan=${plan}`);
+            const response = await fetch(`${API_BASE_URL}/interviews/test-me?plan=${plan}`, {
+                credentials: 'include'
+            });
 
             if (!response.ok) {
                 throw new Error('Failed to create test session');

@@ -1,20 +1,23 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { Button, Card, Modal, Input } from '@/components/UI';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { SubscriptionPlan, JobPosting } from '@/types';
 import { JobDetailLayout } from '@/components/JobDetailLayout';
 import { useJobApi } from '@/hooks/api/useJobApi';
 
 export default function CompanyInterviewDetail() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('companyId') || searchParams.get('companyid') || undefined;
   const jobId = params.jobId as string;
   const companyName = params.companyName as string;
   const router = useRouter();
   const { user } = useStore();
-  const { useJobQuery, useJobCandidatesQuery, inviteCandidatesMutation } = useJobApi(jobId);
+  const { useJobQuery, useJobCandidatesQuery, inviteCandidatesMutation } = useJobApi(jobId, companyId);
   const { data: backendJob, isLoading: jobLoading } = useJobQuery();
   const { data: candidates = [], isLoading: candidatesLoading } = useJobCandidatesQuery();
 
@@ -36,11 +39,10 @@ export default function CompanyInterviewDetail() {
     tabTracking: true,
     eyeTracking: false,
     multiFaceDetection: false,
-    screenRecording: false,
     fullScreenMode: false,
+    noTextTyping: false,
     videoRequired: false,
     micRequired: false,
-    noTextTyping: false,
     timezone: 'UTC',
     candidates: []
   };
@@ -108,15 +110,10 @@ export default function CompanyInterviewDetail() {
   };
 
   // Calculate stats
-  const completedCount = jobWithCandidates.candidates?.filter(c => c.status === 'COMPLETED').length || 0;
+  const completedCount = jobWithCandidates.candidates?.length || 0;
   const avgScore = (jobWithCandidates.candidates?.filter(c => c.score)?.reduce((acc, c) => acc + (c.score || 0), 0) || 0) / (completedCount || 1);
 
   const isLoading = jobLoading || candidatesLoading;
-
-  if (!user) {
-    router.push('/login');
-    return null;
-  }
 
   if (isLoading) {
     return (
@@ -134,6 +131,7 @@ export default function CompanyInterviewDetail() {
       companyName={companyName || job.companyName || 'Company'}
       onInviteClick={() => setIsInviteModalOpen(true)}
     >
+      <LoadingOverlay isLoading={isInviting} message="Sending invitations..." />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
           <Card className="p-8 border-none shadow-xl relative overflow-hidden bg-white">
@@ -151,7 +149,7 @@ export default function CompanyInterviewDetail() {
               </div>
               <div className="flex-1">
                 <div className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Average Score</div>
-                <div className="text-3xl font-black text-blue-600">{avgScore > 0 ? `${Math.round(avgScore)}%` : '--'}</div>
+                <div className="text-3xl font-black text-blue-600 ">{avgScore > 0 ? `${Math.round(avgScore)}` : '--'} <span className="text-xl font-black text-gray-400 uppercase tracking-widest">PTS</span> </div>
               </div>
             </div>
           </Card>
@@ -230,21 +228,24 @@ export default function CompanyInterviewDetail() {
             </div>
 
             <div className="space-y-4">
-              {Object.entries({
-                tabTracking: job.tabTracking,
-                eyeTracking: job.eyeTracking,
-                multiFaceDetection: job.multiFaceDetection,
-                screenRecording: job.screenRecording,
-                fullScreenMode: job.fullScreenMode,
-                noTextTyping: job.noTextTyping
-              }).map(([key, enabled]) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                  <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                    {enabled ? 'On' : 'Off'}
-                  </span>
-                </div>
-              ))}
+              {[
+                { key: 'tabTracking', label: 'Tab Tracking' },
+                { key: 'eyeTracking', label: 'Eye Tracking' },
+                { key: 'multiFaceDetection', label: 'Multi-Face' },
+                { key: 'screenRecording', label: 'Screen Share' },
+                { key: 'fullScreenMode', label: 'Strict Fullscreen' },
+                { key: 'noTextTyping', label: 'Verbal Only' },
+              ].map(({ key, label }) => {
+                const enabled = (job as any)[key];
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-gray-700">{label}</span>
+                    <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${enabled ? 'bg-blue-600/10 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                      {enabled ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="mt-8 pt-6 border-t border-gray-50 text-center">
