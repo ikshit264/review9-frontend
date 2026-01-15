@@ -4,7 +4,7 @@ export enum NotificationType {
     SYSTEM = 'SYSTEM'
 }
 
-export interface HireAINotification {
+export interface IntervAINotification {
     id: string;
     type: NotificationType;
     title: string;
@@ -15,7 +15,7 @@ export interface HireAINotification {
 }
 
 export interface NotificationPage {
-    notifications: HireAINotification[];
+    notifications: IntervAINotification[];
     unreadCount: number;
     nextCursor: string | null;
     hasMore: boolean;

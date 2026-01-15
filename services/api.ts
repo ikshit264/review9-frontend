@@ -10,7 +10,7 @@ import {
     SubscriptionPlan,
     InterviewResponse,
     ProctoringLog,
-    HireAINotification as Notification
+    IntervAINotification as Notification
 } from '@/types';
 
 // API request helper
@@ -33,7 +33,7 @@ async function apiRequest<T>(
     if (response.status === 401) {
         // Redirect to login if unauthorized and not on a public page
         if (typeof window !== 'undefined' && !endpoint.includes('/auth/login')) {
-            const publicPaths = ['/', '/login', '/register', '/interview/demo'];
+            const publicPaths = ['/', '/login', '/register', '/interview/demo', '/terms', '/privacy'];
             const isPublicPage = publicPaths.includes(window.location.pathname);
 
             if (!isPublicPage) {
@@ -85,13 +85,6 @@ export const authApi = {
         return apiRequest<User>('/auth/profile', {
             method: 'PUT',
             body: JSON.stringify(data),
-        });
-    },
-
-    detectTimezone: async (ip?: string) => {
-        return apiRequest<{ timezone: string; location: string }>('/auth/detect-timezone', {
-            method: 'POST',
-            body: JSON.stringify({ ip }),
         });
     },
     verifyToken: async (token: string) => {

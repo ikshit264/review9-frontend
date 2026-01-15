@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, Input } from '@/components/UI';
 import { authApi } from '@/services/api';
@@ -31,6 +31,8 @@ export default function RegisterPage() {
     const [success, setSuccess] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const nextTarget = searchParams.get('next');
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -62,13 +64,13 @@ export default function RegisterPage() {
             });
 
             if (formData.role === 'COMPANY') {
-                setSuccess('Registration request sent! Your account is pending admin approval. Once approved, you will receive a verification email.');
+                setSuccess('Your company account has been approved! Please check your email for a verification link to activate your account and start recruiting.');
             } else {
                 setSuccess('Account created successfully! Please check your email for a verification link to activate your account.');
             }
 
             setTimeout(() => {
-                router.push('/login');
+                router.push(`/login${nextTarget ? `?next=${nextTarget}` : ''}`);
             }, 5000);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
@@ -123,7 +125,7 @@ export default function RegisterPage() {
                         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-900 mb-8 shadow-lg shadow-black/10">
                             <UserPlus className="w-7 h-7 text-white" />
                         </div>
-                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-3">Join HireAI.</h1>
+                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-3">Join IntervAI.</h1>
                         <p className="text-slate-500 font-medium tracking-tight">Experience the future of recruiting infrastructure.</p>
                     </div>
 
@@ -257,7 +259,7 @@ export default function RegisterPage() {
                     <div className="mt-10 pt-8 border-t border-slate-50">
                         <p className="text-center text-sm text-slate-500 font-medium">
                             Already a member?{' '}
-                            <a href="/login" className="text-blue-600 font-bold hover:text-slate-900 transition-colors">
+                            <a href={`/login${nextTarget ? `?next=${nextTarget}` : ''}`} className="text-blue-600 font-bold hover:text-slate-900 transition-colors">
                                 Sign In
                             </a>
                         </p>
