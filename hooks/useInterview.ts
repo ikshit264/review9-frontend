@@ -134,12 +134,16 @@ export const useInterview = (
     if (!recognitionRef.current || !interviewStarted || isPaused || !isUserTurnRef.current || !isMicEnabled) return;
     if (systemStateRef.current === 'PROCESSING' || systemStateRef.current === 'SPEAKING') return;
 
-    try {
-      console.log("[STT] Starting recognition...");
-      recognitionRef.current.start();
-    } catch (e) {
-      // console.warn("[STT] Already running or resetting...");
-    }
+    // Small timeout for Chrome to ensure previous session is fully aborted/ended
+    setTimeout(() => {
+      try {
+        console.log("[STT] Attempting to start recognition...");
+        recognitionRef.current?.start();
+      } catch (e) {
+        // If already running, we're good. If not, retry once
+        console.log("[STT] Start failed (likely already running or transitioning)");
+      }
+    }, 200);
   }, [interviewStarted, isPaused, isMicEnabled]);
 
   const speak = useCallback((text: string, onEnd?: () => void) => {
@@ -636,13 +640,20 @@ export const useInterview = (
   // Trigger STT when turn starts or mic is toggled
   useEffect(() => {
     if (isUserTurn && !isPaused && isMicEnabled) {
-      finalTranscriptRef.current = "";
-      setCandidateInterimText("");
-      startListening();
+      // Small delay to ensure any previous abort has resolved
+      const timer = setTimeout(() => {
+        finalTranscriptRef.current = "";
+        setCandidateInterimText("");
+        startListening();
+      }, 300);
+      return () => clearTimeout(timer);
     } else {
       if (recognitionRef.current) {
-        console.log("[STT] Stopping/Aborting because condition not met (Turn:", isUserTurn, "Paused:", isPaused, "MicEnabled:", isMicEnabled, ")");
-        try { recognitionRef.current.abort(); } catch (e) { }
+        console.log("[STT] Stopping/Aborting (Turn:", isUserTurn, "Paused:", isPaused, "MicEnabled:", isMicEnabled, ")");
+        try {
+          // Abort is better than stop for immediate turn switching
+          recognitionRef.current.abort();
+        } catch (e) { }
       }
     }
   }, [isUserTurn, isPaused, isMicEnabled, startListening]);
